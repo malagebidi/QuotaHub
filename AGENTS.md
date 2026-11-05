@@ -13,8 +13,8 @@ The intended interaction is:
     point.
 -   Clicking the tray icon opens or hides a compact quota panel.
 -   The panel displays provider quota information.
--   Settings are accessible from the panel. A separate settings window
-    or page has not yet been decided.
+-   Settings are embedded in the panel (quota view plus settings view,
+    no separate settings window).
 
 The current goal is to build a simple, maintainable Windows application.
 Do not introduce unnecessary frameworks, dependencies, abstractions, or
@@ -86,8 +86,7 @@ been verified.
 -   Do not add startup-on-boot, automatic update, logging
     infrastructure, or other secondary features until the basic
     application flow works and the user requests or approves them.
--   Do not assume that a dedicated settings window is required. The
-    settings presentation remains undecided.
+-   No dedicated settings window. Settings live inside the panel.
 
 ## Tray icon decision --- finalized
 
@@ -221,5 +220,5 @@ scaffolding.
 -   [x] Build and launch the blank WinUI application successfully.
 -   [x] Finalize the tray icon implementation approach (direct `Shell_NotifyIcon`).
 -   [x] Build the minimal tray icon and panel show/hide prototype.
--   [ ] Decide the settings presentation.
+-   [x] Decide the settings presentation (embedded in the panel).
 -   [ ] Design and implement provider quota retrieval.
