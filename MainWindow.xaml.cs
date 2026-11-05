@@ -116,36 +116,36 @@ namespace QuotaHub
         private void RenderSnapshots(IReadOnlyList<QuotaSnapshot> snapshots)
         {
             QuotaList.Children.Clear();
-            foreach (QuotaSnapshot snapshot in snapshots)
+            foreach (IGrouping<string, QuotaSnapshot> group in snapshots.GroupBy(static s => s.ProviderId))
             {
-                QuotaList.Children.Add(BuildCard(snapshot));
+                QuotaList.Children.Add(BuildCard(group.ToList()));
             }
         }
 
-        private static Border BuildCard(QuotaSnapshot snapshot)
+        private static Border BuildCard(IReadOnlyList<QuotaSnapshot> snapshots)
         {
-            TextBlock name = new()
-            {
-                Text = snapshot.DisplayName,
-                FontWeight = FontWeights.SemiBold,
-            };
-            TextBlock detail = new()
-            {
-                Text = FormatDetail(snapshot),
-                TextWrapping = TextWrapping.Wrap,
-            };
-            TextBlock meta = new()
-            {
-                Text = snapshot.ErrorMessage ?? $"Updated {snapshot.UpdatedAt.LocalDateTime:HH:mm:ss}.",
-                FontSize = 12,
-                Foreground = snapshot.ErrorMessage != null
-                    ? new SolidColorBrush(Colors.IndianRed)
-                    : new SolidColorBrush(Colors.Gray),
-            };
+            QuotaSnapshot first = snapshots[0];
             StackPanel body = new() { Spacing = 2 };
-            body.Children.Add(name);
-            body.Children.Add(detail);
-            body.Children.Add(meta);
+            body.Children.Add(new TextBlock
+            {
+                Text = first.DisplayName,
+                FontWeight = FontWeights.SemiBold,
+            });
+            foreach (QuotaSnapshot snapshot in snapshots)
+            {
+                body.Children.Add(new TextBlock
+                {
+                    Text = FormatDetail(snapshot),
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+            bool hasError = snapshots.Any(static s => s.ErrorMessage != null);
+            body.Children.Add(new TextBlock
+            {
+                Text = $"Updated {first.UpdatedAt.LocalDateTime:HH:mm:ss}.",
+                FontSize = 12,
+                Foreground = new SolidColorBrush(hasError ? Colors.IndianRed : Colors.Gray),
+            });
             return new Border
             {
                 Child = body,

@@ -1,5 +1,6 @@
 using QuotaHub.Models;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -22,11 +23,11 @@ namespace QuotaHub.Providers
 
         public string DisplayName => "DeepSeek";
 
-        public async Task<QuotaSnapshot> GetQuotaAsync(string apiKey, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<QuotaSnapshot>> GetQuotaAsync(string apiKey, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
             {
-                return Fail("API key is missing.", "USD");
+                return new[] { Fail("API key is missing.", "USD") };
             }
 
             try
@@ -39,30 +40,30 @@ namespace QuotaHub.Providers
                 {
                     if ((int)response.StatusCode == 401 || (int)response.StatusCode == 403)
                     {
-                        return Fail($"Invalid API key (HTTP {(int)response.StatusCode}).", "USD");
+                        return new[] { Fail($"Invalid API key (HTTP {(int)response.StatusCode}).", "USD") };
                     }
 
-                    return Fail($"Request failed (HTTP {(int)response.StatusCode}).", "USD");
+                    return new[] { Fail($"Request failed (HTTP {(int)response.StatusCode}).", "USD") };
                 }
 
                 string json = await response.Content.ReadAsStringAsync(cancellationToken);
-                return Parse(json);
+                return ParseMany(json);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
-                return Fail("Request timed out.", "USD");
+                return new[] { Fail("Request timed out.", "USD") };
             }
             catch (HttpRequestException ex)
             {
-                return Fail($"Network error: {ex.Message}", "USD");
+                return new[] { Fail($"Network error: {ex.Message}", "USD") };
             }
             catch (Exception ex) when (ex is JsonException || ex is InvalidOperationException || ex is FormatException)
             {
-                return Fail("Unexpected response format.", "USD");
+                return new[] { Fail("Unexpected response format.", "USD") };
             }
         }
 
-        private QuotaSnapshot Parse(string json)
+        private IReadOnlyList<QuotaSnapshot> ParseMany(string json)
         {
             using JsonDocument document = JsonDocument.Parse(json);
             JsonElement root = document.RootElement;
@@ -71,26 +72,31 @@ namespace QuotaHub.Providers
                 balances.ValueKind != JsonValueKind.Array ||
                 balances.GetArrayLength() == 0)
             {
-                return Fail("No balance information returned.", "USD");
+                return new[] { Fail("No balance information returned.", "USD") };
             }
 
-            JsonElement info = balances[0];
-            string currency = info.TryGetProperty("currency", out JsonElement currencyElement) &&
-                currencyElement.ValueKind == JsonValueKind.String
-                ? currencyElement.GetString() ?? "USD"
-                : "USD";
+            int count = balances.GetArrayLength();
+            List<QuotaSnapshot> snapshots = new(count);
+            foreach (JsonElement info in balances.EnumerateArray())
+            {
+                string currency = info.TryGetProperty("currency", out JsonElement currencyElement) &&
+                    currencyElement.ValueKind == JsonValueKind.String
+                    ? currencyElement.GetString() ?? "USD"
+                    : "USD";
 
-            double remaining = ParseAmount(info, "total_balance");
+                double remaining = ParseAmount(info, "total_balance");
+                snapshots.Add(new QuotaSnapshot(
+                    ProviderId,
+                    DisplayName,
+                    null,
+                    null,
+                    remaining,
+                    currency,
+                    DateTimeOffset.UtcNow,
+                    null));
+            }
 
-            return new QuotaSnapshot(
-                ProviderId,
-                DisplayName,
-                null,
-                null,
-                remaining,
-                currency,
-                DateTimeOffset.UtcNow,
-                null);
+            return snapshots;
         }
 
         private static double ParseAmount(JsonElement element, string propertyName)

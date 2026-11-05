@@ -1,4 +1,5 @@
 using QuotaHub.Models;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,6 +11,6 @@ namespace QuotaHub.Providers
 
         string DisplayName { get; }
 
-        Task<QuotaSnapshot> GetQuotaAsync(string apiKey, CancellationToken cancellationToken);
+        Task<IReadOnlyList<QuotaSnapshot>> GetQuotaAsync(string apiKey, CancellationToken cancellationToken);
     }
 }

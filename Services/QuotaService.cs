@@ -29,11 +29,12 @@ namespace QuotaHub.Services
         {
             ArgumentNullException.ThrowIfNull(settings);
 
-            Task<QuotaSnapshot>[] tasks = _providers
+            Task<IReadOnlyList<QuotaSnapshot>>[] tasks = _providers
                 .Select(provider => provider.GetQuotaAsync(GetApiKey(settings, provider.ProviderId) ?? string.Empty, cancellationToken))
                 .ToArray();
 
-            return await Task.WhenAll(tasks);
+            IReadOnlyList<QuotaSnapshot>[] results = await Task.WhenAll(tasks);
+            return results.SelectMany(static snapshots => snapshots).ToList();
         }
 
         private static string? GetApiKey(AppSettings settings, string providerId)

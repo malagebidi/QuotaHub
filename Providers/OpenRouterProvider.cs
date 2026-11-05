@@ -1,5 +1,6 @@
 using QuotaHub.Models;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -24,7 +25,13 @@ namespace QuotaHub.Providers
 
         public string DisplayName => "OpenRouter";
 
-        public async Task<QuotaSnapshot> GetQuotaAsync(string apiKey, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<QuotaSnapshot>> GetQuotaAsync(string apiKey, CancellationToken cancellationToken)
+        {
+            QuotaSnapshot snapshot = await GetSingleAsync(apiKey, cancellationToken);
+            return new[] { snapshot };
+        }
+
+        private async Task<QuotaSnapshot> GetSingleAsync(string apiKey, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(apiKey))
             {
