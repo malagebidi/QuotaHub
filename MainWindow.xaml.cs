@@ -1,4 +1,5 @@
 using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -18,16 +19,37 @@ namespace QuotaHub
     {
         private readonly SettingsService _settingsService;
         private readonly QuotaService _quotaService;
+        private readonly QuotaCacheService _quotaCacheService;
         private AppSettings _settings = new();
-        private bool _busy;
+        private bool _refreshing;
+        private bool _saving;
         private bool _showingSettings;
+        private readonly DispatcherQueueTimer _autoRefreshTimer;
+        private readonly DispatcherQueueTimer _displayTimer;
+        private DateTimeOffset _lastRefreshAttempt = DateTimeOffset.MinValue;
+        private IReadOnlyList<QuotaSnapshot>? _lastSnapshots;
+        private DateTimeOffset _lastCheckTime;
 
-        public MainWindow(SettingsService settingsService, QuotaService quotaService)
+        private static readonly TimeSpan ManualCooldown = TimeSpan.FromSeconds(30);
+        private TimeSpan _autoRefreshInterval = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan DisplayInterval = TimeSpan.FromSeconds(15);
+
+        public MainWindow(SettingsService settingsService, QuotaService quotaService, QuotaCacheService quotaCacheService)
         {
             InitializeComponent();
             _settingsService = settingsService;
             _quotaService = quotaService;
+            _quotaCacheService = quotaCacheService;
             Activated += OnFirstActivated;
+            _autoRefreshTimer = DispatcherQueue.CreateTimer();
+            _autoRefreshTimer.Interval = _autoRefreshInterval;
+            _autoRefreshTimer.Tick += OnAutoRefreshTick;
+            Closed += OnClosed;
+            _autoRefreshTimer.Start();
+            _displayTimer = DispatcherQueue.CreateTimer();
+            _displayTimer.Interval = DisplayInterval;
+            _displayTimer.Tick += OnDisplayTick;
+            _displayTimer.Start();
         }
 
         private void OnEscapeInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
@@ -42,7 +64,19 @@ namespace QuotaHub
             _settings = await _settingsService.LoadAsync();
             OpenRouterKeyBox.Password = _settings.OpenRouterApiKey ?? string.Empty;
             DeepSeekKeyBox.Password = _settings.DeepSeekApiKey ?? string.Empty;
-            await RefreshAsync();
+            SelectAutoRefreshItem(_settings.AutoRefreshMinutes);
+            ApplyIntervalSettings();
+
+            IReadOnlyList<QuotaSnapshot> cached = await _quotaCacheService.LoadAsync();
+            if (cached.Count > 0)
+            {
+                _lastSnapshots = cached;
+                _lastCheckTime = cached.Max(static s => s.UpdatedAt);
+                RenderSnapshots(cached);
+                UpdateStatusBarText();
+            }
+
+            await RefreshAsync(bypassCooldown: true);
         }
 
         private async void OnRefreshClicked(object sender, RoutedEventArgs e)
@@ -50,57 +84,94 @@ namespace QuotaHub
             await RefreshAsync();
         }
 
+        private async void OnAutoRefreshTick(object sender, object e)
+        {
+            await RefreshAsync(isAuto: true);
+        }
+
+        private void OnClosed(object sender, WindowEventArgs args)
+        {
+            _autoRefreshTimer.Stop();
+            _displayTimer.Stop();
+        }
+
         private void OnSettingsClicked(object sender, RoutedEventArgs e)
         {
             _showingSettings = !_showingSettings;
             QuotaScroll.Visibility = _showingSettings ? Visibility.Collapsed : Visibility.Visible;
             SettingsPanel.Visibility = _showingSettings ? Visibility.Visible : Visibility.Collapsed;
-            SettingsButton.Content = _showingSettings ? "Quota" : "Settings";
-            RefreshButton.IsEnabled = !_showingSettings && !_busy;
+            SettingsButton.Content = new FontIcon { FontSize = 12, Glyph = _showingSettings ? "\uE72B" : "\uE713" };
+            ToolTipService.SetToolTip(SettingsButton, _showingSettings ? "Back to quotas" : "Settings");
+            UpdateButtonStates();
         }
 
         private async void OnSaveClicked(object sender, RoutedEventArgs e)
         {
-            if (_busy)
+            if (_saving || _refreshing)
             {
                 return;
             }
 
-            _busy = true;
-            SaveButton.IsEnabled = false;
+            _saving = true;
+            UpdateButtonStates();
             try
             {
                 _settings.OpenRouterApiKey = NormalizeKey(OpenRouterKeyBox.Password);
                 _settings.DeepSeekApiKey = NormalizeKey(DeepSeekKeyBox.Password);
+                _settings.AutoRefreshMinutes = ReadAutoRefreshMinutes();
                 await _settingsService.SaveAsync(_settings);
+                SelectAutoRefreshItem(_settings.AutoRefreshMinutes);
+                ApplyIntervalSettings();
                 SettingsStatus.Text = $"Saved at {DateTime.Now:HH:mm:ss}.";
-                await RefreshAsync();
             }
             finally
             {
-                _busy = false;
-                SaveButton.IsEnabled = true;
+                _saving = false;
+                UpdateButtonStates();
             }
+
+            await RefreshAsync(bypassCooldown: true);
         }
 
-        private async Task RefreshAsync()
+        private async Task RefreshAsync(CancellationToken cancellationToken = default, bool bypassCooldown = false, bool isAuto = false)
         {
-            if (_busy)
+            if (_refreshing || _saving)
             {
                 return;
             }
 
-            _busy = true;
-            RefreshButton.IsEnabled = false;
+            if (!bypassCooldown)
+            {
+                TimeSpan required = isAuto ? _autoRefreshInterval : ManualCooldown;
+                TimeSpan since = DateTimeOffset.Now - _lastRefreshAttempt;
+                if (since < required)
+                {
+                    if (!isAuto)
+                    {
+                        int waitSeconds = (int)Math.Ceiling((required - since).TotalSeconds);
+                        StatusBar.Text = $"Refreshed recently. Please wait {waitSeconds}s.";
+                    }
+
+                    return;
+                }
+            }
+
+            _refreshing = true;
+            _lastRefreshAttempt = DateTimeOffset.Now;
+            UpdateButtonStates();
             StatusBar.Text = "Refreshing...";
             try
             {
-                IReadOnlyList<QuotaSnapshot> snapshots = await _quotaService.RefreshAsync(_settings, CancellationToken.None);
+                IReadOnlyList<QuotaSnapshot> snapshots = await _quotaService.RefreshAsync(_settings, cancellationToken);
+                _lastSnapshots = snapshots;
+                _lastCheckTime = DateTimeOffset.Now;
                 RenderSnapshots(snapshots);
-                int failed = snapshots.Count(s => s.ErrorMessage != null);
-                StatusBar.Text = failed == 0
-                    ? $"Updated {snapshots.Count} providers at {DateTime.Now:HH:mm:ss}."
-                    : $"{failed} of {snapshots.Count} providers failed. Updated at {DateTime.Now:HH:mm:ss}.";
+                UpdateStatusBarText();
+                await _quotaCacheService.SaveAsync(snapshots);
+            }
+            catch (OperationCanceledException)
+            {
+                StatusBar.Text = "Refresh canceled.";
             }
             catch (Exception ex)
             {
@@ -108,9 +179,99 @@ namespace QuotaHub
             }
             finally
             {
-                _busy = false;
-                RefreshButton.IsEnabled = !_showingSettings;
+                _refreshing = false;
+                UpdateButtonStates();
             }
+        }
+
+        private void UpdateButtonStates()
+        {
+            RefreshButton.IsEnabled = !_showingSettings && !_refreshing && !_saving;
+            SaveButton.IsEnabled = !_saving && !_refreshing;
+        }
+
+        private void ApplyIntervalSettings()
+        {
+            _autoRefreshInterval = TimeSpan.FromMinutes(_settings.AutoRefreshMinutes);
+            _autoRefreshTimer.Interval = _autoRefreshInterval;
+            _autoRefreshTimer.Stop();
+            _autoRefreshTimer.Start();
+        }
+
+        private void SelectAutoRefreshItem(int minutes)
+        {
+            int selected = 1;
+            for (int i = 0; i < AutoRefreshBox.Items.Count; i++)
+            {
+                if (AutoRefreshBox.Items[i] is ComboBoxItem item &&
+                    int.TryParse(item.Tag?.ToString(), out int value) &&
+                    value == minutes)
+                {
+                    selected = i;
+                    break;
+                }
+            }
+
+            AutoRefreshBox.SelectedIndex = selected;
+        }
+
+        private int ReadAutoRefreshMinutes()
+        {
+            if (AutoRefreshBox.SelectedItem is ComboBoxItem item &&
+                int.TryParse(item.Tag?.ToString(), out int value))
+            {
+                return Math.Clamp(value, 1, 120);
+            }
+
+            return 5;
+        }
+
+        private void OnDisplayTick(object sender, object e)
+        {
+            if (_lastSnapshots == null || _refreshing)
+            {
+                return;
+            }
+
+            RenderSnapshots(_lastSnapshots);
+            UpdateStatusBarText();
+        }
+
+        private void UpdateStatusBarText()
+        {
+            if (_lastSnapshots == null)
+            {
+                return;
+            }
+
+            int providerCount = _lastSnapshots.Select(static s => s.ProviderId).Distinct().Count();
+            int failedProviders = _lastSnapshots.GroupBy(static s => s.ProviderId).Count(static g => g.Any(static s => s.ErrorMessage != null));
+            string age = FormatRelative(_lastCheckTime);
+            StatusBar.Text = failedProviders == 0
+                ? $"Updated {providerCount} providers {age}."
+                : $"{failedProviders} of {providerCount} providers failed {age}.";
+        }
+
+        private static string FormatRelative(DateTimeOffset time)
+        {
+            TimeSpan age = DateTimeOffset.Now - time;
+            if (age.TotalSeconds < 10)
+            {
+                return "just now";
+            }
+
+            if (age.TotalSeconds < 60)
+            {
+                return $"{(int)age.TotalSeconds}s ago";
+            }
+
+            if (age.TotalMinutes < 60)
+            {
+                int minutes = (int)age.TotalMinutes;
+                return minutes == 1 ? "1 min ago" : $"{minutes} min ago";
+            }
+
+            return $"at {time.LocalDateTime:HH:mm:ss}";
         }
 
         private void RenderSnapshots(IReadOnlyList<QuotaSnapshot> snapshots)
@@ -140,12 +301,15 @@ namespace QuotaHub
                 });
             }
             bool hasError = snapshots.Any(static s => s.ErrorMessage != null);
-            body.Children.Add(new TextBlock
+            DateTimeOffset latest = snapshots.Max(static s => s.UpdatedAt);
+            TextBlock timestamp = new()
             {
-                Text = $"Updated {first.UpdatedAt.LocalDateTime:HH:mm:ss}.",
+                Text = $"Updated {FormatRelative(latest)}.",
                 FontSize = 12,
                 Foreground = new SolidColorBrush(hasError ? Colors.IndianRed : Colors.Gray),
-            });
+            };
+            ToolTipService.SetToolTip(timestamp, latest.LocalDateTime.ToString("HH:mm:ss"));
+            body.Children.Add(timestamp);
             return new Border
             {
                 Child = body,

@@ -43,6 +43,11 @@ namespace QuotaHub.Providers
                         return new[] { Fail($"Invalid API key (HTTP {(int)response.StatusCode}).", "USD") };
                     }
 
+                    if ((int)response.StatusCode == 429)
+                    {
+                        return new[] { Fail("Rate limited (HTTP 429). Please wait and retry.", "USD") };
+                    }
+
                     return new[] { Fail($"Request failed (HTTP {(int)response.StatusCode}).", "USD") };
                 }
 

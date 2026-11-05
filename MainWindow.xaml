@@ -18,11 +18,17 @@
             <KeyboardAccelerator Key="Escape" Invoked="OnEscapeInvoked" />
         </Grid.KeyboardAccelerators>
 
-        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
             <TextBlock Text="QuotaHub" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-            <Button x:Name="RefreshButton" Content="Refresh" Click="OnRefreshClicked" />
-            <Button x:Name="SettingsButton" Content="Settings" Click="OnSettingsClicked" />
-        </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <Button x:Name="RefreshButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0" Click="OnRefreshClicked" ToolTipService.ToolTip="Refresh">
+                    <FontIcon FontSize="12" Glyph="&#xE72C;" />
+                </Button>
+                <Button x:Name="SettingsButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0" Click="OnSettingsClicked" ToolTipService.ToolTip="Settings">
+                    <FontIcon FontSize="12" Glyph="&#xE713;" />
+                </Button>
+            </StackPanel>
+        </Grid>
 
         <ScrollViewer Grid.Row="1" x:Name="QuotaScroll">
             <StackPanel x:Name="QuotaList" Spacing="8" />
@@ -33,6 +39,15 @@
             <PasswordBox x:Name="OpenRouterKeyBox" PlaceholderText="sk-or-v1-..." />
             <TextBlock Text="DeepSeek API key" />
             <PasswordBox x:Name="DeepSeekKeyBox" PlaceholderText="sk-..." />
+            <TextBlock Text="Auto refresh interval" />
+            <ComboBox x:Name="AutoRefreshBox">
+                <ComboBoxItem Content="1 minute" Tag="1" />
+                <ComboBoxItem Content="5 minutes" Tag="5" />
+                <ComboBoxItem Content="10 minutes" Tag="10" />
+                <ComboBoxItem Content="15 minutes" Tag="15" />
+                <ComboBoxItem Content="30 minutes" Tag="30" />
+                <ComboBoxItem Content="60 minutes" Tag="60" />
+            </ComboBox>
             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Button x:Name="SaveButton" Content="Save" Click="OnSaveClicked" />
                 <TextBlock x:Name="SettingsStatus" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />

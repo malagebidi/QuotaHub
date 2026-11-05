@@ -14,6 +14,8 @@ namespace QuotaHub.Services
         public string? OpenRouterApiKey { get; set; }
 
         public string? DeepSeekApiKey { get; set; }
+
+        public int AutoRefreshMinutes { get; set; } = 5;
     }
 
     public sealed class SettingsService
@@ -28,6 +30,8 @@ namespace QuotaHub.Services
             public string? OpenRouterApiKeyProtected { get; set; }
 
             public string? DeepSeekApiKeyProtected { get; set; }
+
+            public int? AutoRefreshMinutes { get; set; }
         }
 
         public async Task<AppSettings> LoadAsync()
@@ -52,6 +56,7 @@ namespace QuotaHub.Services
                 {
                     OpenRouterApiKey = await UnprotectAsync(stored.OpenRouterApiKeyProtected),
                     DeepSeekApiKey = await UnprotectAsync(stored.DeepSeekApiKeyProtected),
+                    AutoRefreshMinutes = NormalizeAutoRefreshMinutes(stored.AutoRefreshMinutes),
                 };
             }
             catch
@@ -69,12 +74,23 @@ namespace QuotaHub.Services
             {
                 OpenRouterApiKeyProtected = await ProtectAsync(settings.OpenRouterApiKey),
                 DeepSeekApiKeyProtected = await ProtectAsync(settings.DeepSeekApiKey),
+                AutoRefreshMinutes = NormalizeAutoRefreshMinutes(settings.AutoRefreshMinutes),
             };
 
             StorageFolder folder = ApplicationData.Current.LocalFolder;
             string path = Path.Combine(folder.Path, SettingsFileName);
             string json = JsonSerializer.Serialize(stored, JsonOptions);
             await File.WriteAllTextAsync(path, json);
+        }
+
+        private static int NormalizeAutoRefreshMinutes(int? value)
+        {
+            if (value == null)
+            {
+                return 5;
+            }
+
+            return Math.Clamp(value.Value, 1, 120);
         }
 
         private static async Task<string?> ProtectAsync(string? value)

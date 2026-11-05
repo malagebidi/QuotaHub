@@ -51,6 +51,11 @@ namespace QuotaHub.Providers
                         return Fail($"Invalid API key (HTTP {(int)response.StatusCode}).");
                     }
 
+                    if ((int)response.StatusCode == 429)
+                    {
+                        return Fail("Rate limited (HTTP 429). Please wait and retry.");
+                    }
+
                     return Fail($"Request failed (HTTP {(int)response.StatusCode}).");
                 }
 
