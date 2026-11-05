@@ -96,6 +96,7 @@ namespace QuotaHub.Providers
                     null));
             }
 
+            snapshots.Sort(static (a, b) => string.CompareOrdinal(a.Unit, b.Unit));
             return snapshots;
         }
 
