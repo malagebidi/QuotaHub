@@ -33,12 +33,19 @@ Use the following stack unless the user explicitly changes the decision:
 This is intended to be a native WinUI 3 application, not a Tauri,
 Electron, browser-based, or WebView application.
 
+Build, run, and debug in Visual Studio. VS Code is text-editing only:
+decline its "add build and debug assets" prompt and do not use C# Dev Kit
+to build or debug this packaged app.
+
 ### Current project configuration
 
 The project was created from the **Blank App, Packaged (WinUI 3 in
 Desktop)** template, using the single-project MSIX packaging approach.
 
 The project and solution are both named `QuotaHub`.
+
+The package identity is `DY.QuotaHub` with publisher `CN=DY` (local
+development certificate).
 
 The project currently targets:
 
@@ -100,12 +107,11 @@ extra dependency and abstraction.
 Do not add a tray library. Implement the notification-area icon with
 `Shell_NotifyIcon` and minimal Win32 interop.
 
-## Intended initial behavior
+## Intended behavior
 
-The following is the proposed behavior for the first working prototype,
-subject to user confirmation:
+The following behavior is implemented:
 
--   Start the application in the background.
+-   Run as a tray-resident app with a notification-area icon.
 -   Create a notification-area icon.
 -   Show the quota panel at startup so the app is easy to find.
 -   Left-clicking the tray icon toggles the quota panel.
@@ -118,9 +124,9 @@ subject to user confirmation:
     application.
 -   The panel contains a settings entry point.
 
-The first prototype should focus only on proving the tray icon and panel
-show/hide lifecycle. Do not implement provider APIs or quota parsing as
-part of that initial prototype.
+The tray icon and panel show/hide lifecycle prototype is complete.
+Provider quota retrieval (OpenRouter, DeepSeek) is implemented with
+manual refresh.
 
 ## Proposed architecture
 
@@ -148,10 +154,8 @@ Potential APIs and technologies:
 -   `HttpClient` for network requests.
 -   `PeriodicTimer` for periodic refresh.
 -   JSON for settings and provider data.
--   Use an appropriate Windows-protected storage mechanism for
-    credentials. Do not store API tokens or other secrets as plain text.
-    Decide on the storage implementation when credentials are actually
-    introduced.
+-   Windows data protection (`DataProtectionProvider`, `LOCAL=user`)
+    for credentials. API keys are stored encrypted, never as plain text.
 
 These are architectural directions, not instructions to create every
 service or file immediately.
@@ -165,13 +169,20 @@ once.
 ``` text
 QuotaHub/
 ├── Assets/
-│   ├── Icons/
-│   └── Images/
+│   ├── TrayIcon.ico
+│   └── *.png (default template images)
 ├── Models/
+│   └── QuotaSnapshot.cs
 ├── Services/
+│   ├── TrayIconService.cs
+│   ├── SettingsService.cs
+│   └── QuotaService.cs
 ├── Providers/
-├── Views/
-├── ViewModels/
+│   ├── IQuotaProvider.cs
+│   ├── OpenRouterProvider.cs
+│   └── DeepSeekProvider.cs
+├── Views/ (future, only when needed)
+├── ViewModels/ (future, only when needed)
 ├── App.xaml
 ├── App.xaml.cs
 ├── MainWindow.xaml
