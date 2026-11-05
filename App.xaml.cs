@@ -4,6 +4,7 @@ using QuotaHub.Services;
 using System;
 using System.IO;
 using Windows.ApplicationModel;
+using Windows.Graphics;
 using WinRT.Interop;
 
 namespace QuotaHub
@@ -32,7 +33,10 @@ namespace QuotaHub
         /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            _window = new MainWindow();
+            SettingsService settingsService = new();
+            QuotaService quotaService = new();
+            _window = new MainWindow(settingsService, quotaService);
+            _window.AppWindow.Resize(new SizeInt32(380, 560));
 
             string iconPath = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "TrayIcon.ico");
 

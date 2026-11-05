@@ -13,10 +13,33 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid>
+    <Grid RowDefinitions="Auto,*,Auto" Padding="12" RowSpacing="8">
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Invoked="OnEscapeInvoked" />
         </Grid.KeyboardAccelerators>
 
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <TextBlock Text="QuotaHub" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <Button x:Name="RefreshButton" Content="Refresh" Click="OnRefreshClicked" />
+            <Button x:Name="SettingsButton" Content="Settings" Click="OnSettingsClicked" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" x:Name="QuotaScroll">
+            <StackPanel x:Name="QuotaList" Spacing="8" />
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="1" x:Name="SettingsPanel" Visibility="Collapsed" Spacing="8">
+            <TextBlock Text="OpenRouter API key" />
+            <PasswordBox x:Name="OpenRouterKeyBox" PlaceholderText="sk-or-v1-..." />
+            <TextBlock Text="DeepSeek API key" />
+            <PasswordBox x:Name="DeepSeekKeyBox" PlaceholderText="sk-..." />
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="SaveButton" Content="Save" Click="OnSaveClicked" />
+                <TextBlock x:Name="SettingsStatus" VerticalAlignment="Center" Foreground="Gray" FontSize="12" />
+            </StackPanel>
+            <TextBlock Text="Keys are encrypted with Windows data protection and stored on this device only." TextWrapping="Wrap" Foreground="Gray" FontSize="12" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" x:Name="StatusBar" Foreground="Gray" FontSize="12" Text="Not refreshed yet." />
     </Grid>
 </Window>

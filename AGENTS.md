@@ -221,4 +221,4 @@ scaffolding.
 -   [x] Finalize the tray icon implementation approach (direct `Shell_NotifyIcon`).
 -   [x] Build the minimal tray icon and panel show/hide prototype.
 -   [x] Decide the settings presentation (embedded in the panel).
--   [ ] Design and implement provider quota retrieval.
+-   [x] Design and implement provider quota retrieval (OpenRouter + DeepSeek, manual refresh).
