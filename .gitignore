@@ -1,0 +1,29 @@
+# Visual Studio / VS Code
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vscode/
+
+# Build outputs
+bin/
+obj/
+out/
+TestResults/
+AppPackages/
+BundleArtifacts/
+Publish/
+artifacts/
+_ReSharper*/
+
+# NuGet
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini

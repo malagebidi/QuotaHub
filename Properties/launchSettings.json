@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "QuotaHub (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "QuotaHub (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
