@@ -108,7 +108,7 @@ subject to user confirmation:
 
 -   Start the application in the background.
 -   Create a notification-area icon.
--   Do not show the quota panel automatically at startup.
+-   Show the quota panel at startup so the app is easy to find.
 -   Left-clicking the tray icon toggles the quota panel.
 -   Right-clicking the tray icon opens a small context menu.
 -   Clicking outside the panel hides it.
@@ -220,6 +220,6 @@ scaffolding.
 -   [x] Change the target framework to .NET 10.
 -   [x] Build and launch the blank WinUI application successfully.
 -   [x] Finalize the tray icon implementation approach (direct `Shell_NotifyIcon`).
--   [ ] Build the minimal tray icon and panel show/hide prototype.
+-   [x] Build the minimal tray icon and panel show/hide prototype.
 -   [ ] Decide the settings presentation.
 -   [ ] Design and implement provider quota retrieval.

@@ -1,23 +1,10 @@
 ﻿using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
-using Microsoft.UI.Xaml.Shapes;
+using Microsoft.UI.Windowing;
+using QuotaHub.Services;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.ApplicationModel;
-using Windows.ApplicationModel.Activation;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+using WinRT.Interop;
 
 namespace QuotaHub
 {
@@ -27,6 +14,8 @@ namespace QuotaHub
     public partial class App : Application
     {
         private Window? _window;
+        private TrayIconService? _trayIcon;
+        private bool _isExiting;
 
         /// <summary>
         /// Initializes the singleton application object.  This is the first line of authored code
@@ -44,7 +33,88 @@ namespace QuotaHub
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
             _window = new MainWindow();
+
+            string iconPath = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "TrayIcon.ico");
+
+            _trayIcon = new TrayIconService();
+            _trayIcon.Start(iconPath, "QuotaHub");
+            _trayIcon.LeftClick += OnTrayLeftClick;
+            _trayIcon.ShowRequested += OnTrayShowRequested;
+            _trayIcon.ExitRequested += OnTrayExitRequested;
+
+            _window.AppWindow.Closing += OnWindowClosing;
+            _window.Activated += OnWindowActivated;
+            _window.Closed += OnWindowClosed;
             _window.Activate();
+        }
+
+        private void OnTrayLeftClick()
+        {
+            if (_window == null)
+            {
+                return;
+            }
+
+            nint hwnd = WindowNative.GetWindowHandle(_window);
+            if (_window.AppWindow.IsVisible && !TrayIconService.IsMinimized(hwnd))
+            {
+                _window.AppWindow.Hide();
+            }
+            else
+            {
+                ShowPanel();
+            }
+        }
+
+        private void OnTrayShowRequested()
+        {
+            ShowPanel();
+        }
+
+        private void ShowPanel()
+        {
+            if (_window == null)
+            {
+                return;
+            }
+
+            nint hwnd = WindowNative.GetWindowHandle(_window);
+            _window.AppWindow.Show();
+            TrayIconService.EnsureVisibleAndForeground(hwnd);
+            _window.Activate();
+        }
+
+        private void OnTrayExitRequested()
+        {
+            _isExiting = true;
+            _trayIcon?.Dispose();
+            _trayIcon = null;
+            Exit();
+        }
+
+        private void OnWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+        {
+            if (_isExiting)
+            {
+                return;
+            }
+
+            args.Cancel = true;
+            _window?.AppWindow.Hide();
+        }
+
+        private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
+        {
+            if (args.WindowActivationState == WindowActivationState.Deactivated)
+            {
+                _window?.AppWindow.Hide();
+            }
+        }
+
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            _trayIcon?.Dispose();
+            _trayIcon = null;
         }
     }
 }
