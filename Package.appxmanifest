@@ -9,7 +9,7 @@
   IgnorableNamespaces="uap rescap systemai">
 
   <Identity
-    Name="56648abe-4085-4d19-974a-42f8df8beaaa"
+    Name="DY.QuotaHub"
     Publisher="CN=DY"
     Version="1.0.0.0" />
 
