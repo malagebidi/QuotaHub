@@ -40,6 +40,7 @@ namespace QuotaHub
         private DateTimeOffset _lastCheckTime;
         private long _spinStartTimestamp;
         private bool _isSpinning;
+        private bool _coolingDown;
 
         private static readonly TimeSpan ManualCooldown = TimeSpan.FromSeconds(5);
         private TimeSpan _autoRefreshInterval = TimeSpan.FromMinutes(5);
@@ -62,6 +63,7 @@ namespace QuotaHub
             _displayTimer.Tick += OnDisplayTick;
             _displayTimer.Start();
             _cooldownTimer = DispatcherQueue.CreateTimer();
+            _cooldownTimer.IsRepeating = false;
             _cooldownTimer.Interval = ManualCooldown;
             _cooldownTimer.Tick += OnCooldownTick;
             UpdateEdgeStroke();
@@ -106,6 +108,7 @@ namespace QuotaHub
 
             int version = ++_animationVersion;
             IsPanelVisible = true;
+            UpdateButtonStates();
             var layout = GetCursorLayout();
             PointInt32 finalPosition = GetPanelPosition(layout);
             AppWindow.Resize(GetPhysicalSize(layout));
@@ -135,6 +138,7 @@ namespace QuotaHub
         public void CancelPendingHide()
         {
             _animationVersion++;
+            UpdateButtonStates();
             AppWindow.Move(GetPanelPosition(GetWindowLayout()));
         }
 
@@ -253,6 +257,7 @@ namespace QuotaHub
         private void OnCooldownTick(DispatcherQueueTimer sender, object args)
         {
             _cooldownTimer.Stop();
+            _coolingDown = false;
             UpdateButtonStates();
         }
 
@@ -357,6 +362,7 @@ namespace QuotaHub
                     _refreshing = false;
                     if (animate)
                     {
+                        _coolingDown = true;
                         _lastManualRefreshFinish = DateTimeOffset.Now;
                         _cooldownTimer.Stop();
                         _cooldownTimer.Start();
@@ -368,8 +374,13 @@ namespace QuotaHub
 
         private void UpdateButtonStates()
         {
-            bool inCooldown = (DateTimeOffset.Now - _lastManualRefreshFinish) < ManualCooldown;
-            RefreshButton.IsEnabled = !_showingSettings && !_refreshing && !_saving && !inCooldown;
+            if (_coolingDown && (DateTimeOffset.Now - _lastManualRefreshFinish >= ManualCooldown))
+            {
+                _coolingDown = false;
+                _cooldownTimer.Stop();
+            }
+
+            RefreshButton.IsEnabled = !_showingSettings && !_refreshing && !_saving && !_coolingDown;
             SaveButton.IsEnabled = !_saving && !_refreshing;
         }
 
@@ -461,6 +472,7 @@ namespace QuotaHub
 
         private void OnDisplayTick(object sender, object e)
         {
+            UpdateButtonStates();
             if (_lastSnapshots == null || _refreshing)
             {
                 return;
