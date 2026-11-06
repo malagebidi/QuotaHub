@@ -142,7 +142,7 @@ namespace QuotaHub
             AppWindow.Move(GetPanelPosition(GetWindowLayout()));
         }
 
-        private PointInt32 GetPanelPosition((RectInt32 WorkArea, double Scale) layout)
+        private PointInt32 GetPanelPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
         {
             int width = (int)Math.Round(PanelWidth * layout.Scale);
             int height = (int)Math.Round(PanelHeight * layout.Scale);
@@ -153,10 +153,10 @@ namespace QuotaHub
             return new PointInt32(x, y);
         }
 
-        private PointInt32 GetParkedPosition((RectInt32 WorkArea, double Scale) layout)
+        private PointInt32 GetParkedPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
         {
             PointInt32 panel = GetPanelPosition(layout);
-            return new PointInt32(panel.X, layout.WorkArea.Y + layout.WorkArea.Height + PanelParkedExtraPx);
+            return new PointInt32(panel.X, layout.OuterBounds.Y + layout.OuterBounds.Height + PanelParkedExtraPx);
         }
 
         public SizeInt32 GetPhysicalSize()
@@ -164,28 +164,28 @@ namespace QuotaHub
             return GetPhysicalSize(GetCursorLayout());
         }
 
-        private SizeInt32 GetPhysicalSize((RectInt32 WorkArea, double Scale) layout)
+        private SizeInt32 GetPhysicalSize((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
         {
             return new SizeInt32(
                 (int)Math.Round(PanelWidth * layout.Scale),
                 (int)Math.Round(PanelHeight * layout.Scale));
         }
 
-        private (RectInt32 WorkArea, double Scale) GetCursorLayout()
+        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) GetCursorLayout()
         {
             if (TrayIconService.TryGetCursorPoint(out int x, out int y))
             {
                 DisplayArea display = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Primary);
-                return (display.WorkArea, TrayIconService.GetScaleForPoint(x, y));
+                return (display.WorkArea, display.OuterBounds, TrayIconService.GetScaleForPoint(x, y));
             }
 
             return GetWindowLayout();
         }
 
-        private (RectInt32 WorkArea, double Scale) GetWindowLayout()
+        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) GetWindowLayout()
         {
             DisplayArea display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
-            return (display.WorkArea, TrayIconService.GetWindowScaleFactor(WindowNative.GetWindowHandle(this)));
+            return (display.WorkArea, display.OuterBounds, TrayIconService.GetWindowScaleFactor(WindowNative.GetWindowHandle(this)));
         }
 
         private async Task SlideWindowToAsync(PointInt32 to, int durationMs, int version, bool easeOut)
