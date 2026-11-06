@@ -1,5 +1,7 @@
 ﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
+using Microsoft.Windows.AppLifecycle;
+using AppInstance = Microsoft.Windows.AppLifecycle.AppInstance;
 using QuotaHub.Services;
 using System;
 using System.IO;
@@ -31,14 +33,32 @@ namespace QuotaHub
         /// Invoked when the application is launched.
         /// </summary>
         /// <param name="args">Details about the launch request and process.</param>
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
+            AppActivationArguments activationArgs = AppInstance.GetCurrent().GetActivatedEventArgs();
+            AppInstance mainInstance = AppInstance.FindOrRegisterForKey("QuotaHubMain");
+            if (!mainInstance.IsCurrent)
+            {
+                await mainInstance.RedirectActivationToAsync(activationArgs);
+                Exit();
+                return;
+            }
+
+            mainInstance.Activated -= OnAppInstanceActivated;
+            mainInstance.Activated += OnAppInstanceActivated;
+
+            if (_window != null)
+            {
+                ShowPanel();
+                return;
+            }
+
             SettingsService settingsService = new();
             QuotaService quotaService = new();
             QuotaCacheService quotaCacheService = new();
             _window = new MainWindow(settingsService, quotaService, quotaCacheService);
             _window.AppWindow.Resize(new SizeInt32(380, 560));
-            string iconPath = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "TrayIcon.ico");
+            string iconPath = AppPaths.GetIconPath();
             _window.AppWindow.SetIcon(iconPath);
 
             _trayIcon = new TrayIconService();
@@ -51,6 +71,16 @@ namespace QuotaHub
             _window.Activated += OnWindowActivated;
             _window.Closed += OnWindowClosed;
             _window.Activate();
+        }
+
+        private void OnAppInstanceActivated(object? sender, AppActivationArguments args)
+        {
+            if (_window == null)
+            {
+                return;
+            }
+
+            _window.DispatcherQueue.TryEnqueue(ShowPanel);
         }
 
         private void OnTrayLeftClick()

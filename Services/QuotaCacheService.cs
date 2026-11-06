@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Windows.Storage;
 
 namespace QuotaHub.Services
 {
@@ -16,8 +15,7 @@ namespace QuotaHub.Services
         {
             try
             {
-                StorageFolder folder = ApplicationData.Current.LocalFolder;
-                string path = Path.Combine(folder.Path, CacheFileName);
+                string path = Path.Combine(AppPaths.GetDataFolderPath(), CacheFileName);
                 if (!File.Exists(path))
                 {
                     return Array.Empty<QuotaSnapshot>();
@@ -45,8 +43,7 @@ namespace QuotaHub.Services
             {
                 ArgumentNullException.ThrowIfNull(snapshots);
 
-                StorageFolder folder = ApplicationData.Current.LocalFolder;
-                string path = Path.Combine(folder.Path, CacheFileName);
+                string path = Path.Combine(AppPaths.GetDataFolderPath(), CacheFileName);
                 string json = JsonSerializer.Serialize(snapshots);
                 await File.WriteAllTextAsync(path, json);
             }

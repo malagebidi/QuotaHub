@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Windows.Security.Cryptography;
 using Windows.Security.Cryptography.DataProtection;
-using Windows.Storage;
 using Windows.Storage.Streams;
 
 namespace QuotaHub.Services
@@ -38,8 +37,7 @@ namespace QuotaHub.Services
         {
             try
             {
-                StorageFolder folder = ApplicationData.Current.LocalFolder;
-                string path = Path.Combine(folder.Path, SettingsFileName);
+                string path = Path.Combine(AppPaths.GetDataFolderPath(), SettingsFileName);
                 if (!File.Exists(path))
                 {
                     return new AppSettings();
@@ -77,8 +75,8 @@ namespace QuotaHub.Services
                 AutoRefreshMinutes = NormalizeAutoRefreshMinutes(settings.AutoRefreshMinutes),
             };
 
-            StorageFolder folder = ApplicationData.Current.LocalFolder;
-            string path = Path.Combine(folder.Path, SettingsFileName);
+            string dataFolder = AppPaths.GetDataFolderPath();
+            string path = Path.Combine(dataFolder, SettingsFileName);
             string json = JsonSerializer.Serialize(stored, JsonOptions);
             await File.WriteAllTextAsync(path, json);
         }
