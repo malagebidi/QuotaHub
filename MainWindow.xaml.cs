@@ -1,17 +1,24 @@
 using Microsoft.UI;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Windowing;
 using QuotaHub.Models;
 using QuotaHub.Services;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Windows.Graphics;
+using WinRT.Interop;
 
 namespace QuotaHub
 {
@@ -26,11 +33,15 @@ namespace QuotaHub
         private bool _showingSettings;
         private readonly DispatcherQueueTimer _autoRefreshTimer;
         private readonly DispatcherQueueTimer _displayTimer;
+        private readonly DispatcherQueueTimer _cooldownTimer;
         private DateTimeOffset _lastRefreshAttempt = DateTimeOffset.MinValue;
+        private DateTimeOffset _lastManualRefreshFinish = DateTimeOffset.MinValue;
         private IReadOnlyList<QuotaSnapshot>? _lastSnapshots;
         private DateTimeOffset _lastCheckTime;
+        private long _spinStartTimestamp;
+        private bool _isSpinning;
 
-        private static readonly TimeSpan ManualCooldown = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan ManualCooldown = TimeSpan.FromSeconds(5);
         private TimeSpan _autoRefreshInterval = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan DisplayInterval = TimeSpan.FromSeconds(15);
 
@@ -50,12 +61,155 @@ namespace QuotaHub
             _displayTimer.Interval = DisplayInterval;
             _displayTimer.Tick += OnDisplayTick;
             _displayTimer.Start();
+            _cooldownTimer = DispatcherQueue.CreateTimer();
+            _cooldownTimer.Interval = ManualCooldown;
+            _cooldownTimer.Tick += OnCooldownTick;
+            UpdateEdgeStroke();
+            RootGrid.ActualThemeChanged += OnActualThemeChanged;
         }
 
-        private void OnEscapeInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+        private const int PanelEntranceDurationMs = 167;
+        private const int PanelExitDurationMs = 167;
+        private const int PanelWidth = 380;
+        private const int PanelHeight = 560;
+        private const int PanelMargin = 12;
+        private const int PanelParkedExtraPx = 4;
+        private int _animationVersion;
+
+        public bool IsPanelVisible { get; private set; }
+
+        private void OnActualThemeChanged(FrameworkElement sender, object args)
         {
-            AppWindow.Hide();
+            UpdateEdgeStroke();
+        }
+
+        private void UpdateEdgeStroke()
+        {
+            bool isDark = RootGrid.ActualTheme == ElementTheme.Dark;
+            RootGrid.BorderBrush = new SolidColorBrush(isDark
+                ? Windows.UI.Color.FromArgb(0xFF, 0x2E, 0x2E, 0x2E)
+                : Windows.UI.Color.FromArgb(0xFF, 0xE5, 0xE5, 0xE5));
+        }
+
+        private async void OnEscapeInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+        {
             args.Handled = true;
+            await HideAnimatedAsync();
+        }
+
+        public async Task ShowAnimatedAsync()
+        {
+            if (IsPanelVisible)
+            {
+                return;
+            }
+
+            int version = ++_animationVersion;
+            IsPanelVisible = true;
+            var layout = GetCursorLayout();
+            PointInt32 finalPosition = GetPanelPosition(layout);
+            AppWindow.Resize(GetPhysicalSize(layout));
+            AppWindow.Move(GetParkedPosition(layout));
+            AppWindow.Show();
+            await SlideWindowToAsync(finalPosition, PanelEntranceDurationMs, version, easeOut: true);
+        }
+
+        public async Task HideAnimatedAsync()
+        {
+            if (!IsPanelVisible)
+            {
+                return;
+            }
+
+            int version = ++_animationVersion;
+            var layout = GetWindowLayout();
+            await SlideWindowToAsync(GetParkedPosition(layout), PanelExitDurationMs, version, easeOut: false);
+            if (version != _animationVersion)
+            {
+                return;
+            }
+
+            IsPanelVisible = false;
+        }
+
+        public void CancelPendingHide()
+        {
+            _animationVersion++;
+            AppWindow.Move(GetPanelPosition(GetWindowLayout()));
+        }
+
+        private PointInt32 GetPanelPosition((RectInt32 WorkArea, double Scale) layout)
+        {
+            int width = (int)Math.Round(PanelWidth * layout.Scale);
+            int height = (int)Math.Round(PanelHeight * layout.Scale);
+            int margin = (int)Math.Round(PanelMargin * layout.Scale);
+            RectInt32 workArea = layout.WorkArea;
+            int x = workArea.X + workArea.Width - width - margin;
+            int y = workArea.Y + workArea.Height - height - margin;
+            return new PointInt32(x, y);
+        }
+
+        private PointInt32 GetParkedPosition((RectInt32 WorkArea, double Scale) layout)
+        {
+            PointInt32 panel = GetPanelPosition(layout);
+            return new PointInt32(panel.X, layout.WorkArea.Y + layout.WorkArea.Height + PanelParkedExtraPx);
+        }
+
+        public SizeInt32 GetPhysicalSize()
+        {
+            return GetPhysicalSize(GetCursorLayout());
+        }
+
+        private SizeInt32 GetPhysicalSize((RectInt32 WorkArea, double Scale) layout)
+        {
+            return new SizeInt32(
+                (int)Math.Round(PanelWidth * layout.Scale),
+                (int)Math.Round(PanelHeight * layout.Scale));
+        }
+
+        private (RectInt32 WorkArea, double Scale) GetCursorLayout()
+        {
+            if (TrayIconService.TryGetCursorPoint(out int x, out int y))
+            {
+                DisplayArea display = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Primary);
+                return (display.WorkArea, TrayIconService.GetScaleForPoint(x, y));
+            }
+
+            return GetWindowLayout();
+        }
+
+        private (RectInt32 WorkArea, double Scale) GetWindowLayout()
+        {
+            DisplayArea display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
+            return (display.WorkArea, TrayIconService.GetWindowScaleFactor(WindowNative.GetWindowHandle(this)));
+        }
+
+        private async Task SlideWindowToAsync(PointInt32 to, int durationMs, int version, bool easeOut)
+        {
+            PointInt32 from = AppWindow.Position;
+            long start = Stopwatch.GetTimestamp();
+            while (true)
+            {
+                if (version != _animationVersion)
+                {
+                    return;
+                }
+
+                double elapsedMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+                double progress = Math.Min(1.0, elapsedMs / durationMs);
+                double eased = easeOut
+                    ? 1.0 - (1.0 - progress) * (1.0 - progress) * (1.0 - progress)
+                    : progress * progress * progress;
+                int x = from.X + (int)Math.Round((to.X - from.X) * eased);
+                int y = from.Y + (int)Math.Round((to.Y - from.Y) * eased);
+                AppWindow.Move(new PointInt32(x, y));
+                if (progress >= 1.0)
+                {
+                    break;
+                }
+
+                await Task.Delay(8);
+            }
         }
 
         private async void OnFirstActivated(object sender, WindowActivatedEventArgs e)
@@ -76,23 +230,30 @@ namespace QuotaHub
                 UpdateStatusBarText();
             }
 
-            await RefreshAsync(bypassCooldown: true);
+            await RefreshAsync(bypassCooldown: true, animate: false);
         }
 
         private async void OnRefreshClicked(object sender, RoutedEventArgs e)
         {
-            await RefreshAsync();
+            await RefreshAsync(animate: true);
         }
 
         private async void OnAutoRefreshTick(object sender, object e)
         {
-            await RefreshAsync(isAuto: true);
+            await RefreshAsync(isAuto: true, animate: false);
         }
 
         private void OnClosed(object sender, WindowEventArgs args)
         {
             _autoRefreshTimer.Stop();
             _displayTimer.Stop();
+            _cooldownTimer.Stop();
+        }
+
+        private void OnCooldownTick(DispatcherQueueTimer sender, object args)
+        {
+            _cooldownTimer.Stop();
+            UpdateButtonStates();
         }
 
         private void OnSettingsClicked(object sender, RoutedEventArgs e)
@@ -130,10 +291,10 @@ namespace QuotaHub
                 UpdateButtonStates();
             }
 
-            await RefreshAsync(bypassCooldown: true);
+            await RefreshAsync(bypassCooldown: true, animate: false);
         }
 
-        private async Task RefreshAsync(CancellationToken cancellationToken = default, bool bypassCooldown = false, bool isAuto = false)
+        private async Task RefreshAsync(CancellationToken cancellationToken = default, bool bypassCooldown = false, bool isAuto = false, bool animate = false)
         {
             if (_refreshing || _saving)
             {
@@ -143,7 +304,8 @@ namespace QuotaHub
             if (!bypassCooldown)
             {
                 TimeSpan required = isAuto ? _autoRefreshInterval : ManualCooldown;
-                TimeSpan since = DateTimeOffset.Now - _lastRefreshAttempt;
+                DateTimeOffset referenceTime = isAuto ? _lastRefreshAttempt : _lastManualRefreshFinish;
+                TimeSpan since = DateTimeOffset.Now - referenceTime;
                 if (since < required)
                 {
                     if (!isAuto)
@@ -159,6 +321,10 @@ namespace QuotaHub
             _refreshing = true;
             _lastRefreshAttempt = DateTimeOffset.Now;
             UpdateButtonStates();
+            if (animate)
+            {
+                StartRefreshSpin();
+            }
             StatusBar.Text = "Refreshing...";
             try
             {
@@ -179,15 +345,82 @@ namespace QuotaHub
             }
             finally
             {
-                _refreshing = false;
-                UpdateButtonStates();
+                try
+                {
+                    if (animate)
+                    {
+                        await StopRefreshSpinAsync();
+                    }
+                }
+                finally
+                {
+                    _refreshing = false;
+                    if (animate)
+                    {
+                        _lastManualRefreshFinish = DateTimeOffset.Now;
+                        _cooldownTimer.Stop();
+                        _cooldownTimer.Start();
+                    }
+                    UpdateButtonStates();
+                }
             }
         }
 
         private void UpdateButtonStates()
         {
-            RefreshButton.IsEnabled = !_showingSettings && !_refreshing && !_saving;
+            bool inCooldown = (DateTimeOffset.Now - _lastManualRefreshFinish) < ManualCooldown;
+            RefreshButton.IsEnabled = !_showingSettings && !_refreshing && !_saving && !inCooldown;
             SaveButton.IsEnabled = !_saving && !_refreshing;
+        }
+
+        private void StartRefreshSpin()
+        {
+            _isSpinning = true;
+            _spinStartTimestamp = Stopwatch.GetTimestamp();
+
+            Visual visual = ElementCompositionPreview.GetElementVisual(RefreshIconContainer);
+            visual.CenterPoint = new Vector3(8f, 8f, 0f);
+            Compositor compositor = visual.Compositor;
+            LinearEasingFunction linear = compositor.CreateLinearEasingFunction();
+            ScalarKeyFrameAnimation spin = compositor.CreateScalarKeyFrameAnimation();
+            spin.InsertKeyFrame(0f, 0f, linear);
+            spin.InsertKeyFrame(1f, 360f, linear);
+            spin.Duration = TimeSpan.FromSeconds(1);
+            spin.IterationBehavior = AnimationIterationBehavior.Forever;
+            visual.StartAnimation("RotationAngleInDegrees", spin);
+        }
+
+        private async Task StopRefreshSpinAsync()
+        {
+            if (!_isSpinning)
+            {
+                return;
+            }
+
+            _isSpinning = false;
+            double elapsedSeconds = (Stopwatch.GetTimestamp() - _spinStartTimestamp) / (double)Stopwatch.Frequency;
+            float currentAngle = (float)((elapsedSeconds * 360.0) % 360.0);
+            float remainingAngle = 360f - currentAngle;
+            float targetAngle = remainingAngle < 90f ? 720f : 360f;
+            float delta = targetAngle - currentAngle;
+            int durationMs = (int)Math.Clamp(delta / 360f * 400f, 200f, 400f);
+
+            Visual visual = ElementCompositionPreview.GetElementVisual(RefreshIconContainer);
+            Compositor compositor = visual.Compositor;
+            CompositionEasingFunction easeOut = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.1f, 0.9f),
+                new Vector2(0.2f, 1f));
+
+            ScalarKeyFrameAnimation settle = compositor.CreateScalarKeyFrameAnimation();
+            settle.InsertKeyFrame(0f, currentAngle);
+            settle.InsertKeyFrame(1f, targetAngle, easeOut);
+            settle.Duration = TimeSpan.FromMilliseconds(durationMs);
+            visual.StartAnimation("RotationAngleInDegrees", settle);
+
+            await Task.Delay(durationMs);
+
+            visual.StopAnimation("RotationAngleInDegrees");
+            visual.RotationAngleInDegrees = 0f;
         }
 
         private void ApplyIntervalSettings()

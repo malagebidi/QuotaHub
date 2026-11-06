@@ -57,10 +57,24 @@ namespace QuotaHub
             QuotaService quotaService = new();
             QuotaCacheService quotaCacheService = new();
             _window = new MainWindow(settingsService, quotaService, quotaCacheService);
-            _window.AppWindow.Resize(new SizeInt32(380, 560));
+            SizeInt32 initialSize = new SizeInt32(380, 560);
+            if (_window is MainWindow bootPanel)
+            {
+                initialSize = bootPanel.GetPhysicalSize();
+            }
+
+            _window.AppWindow.Resize(initialSize);
             string iconPath = AppPaths.GetIconPath();
             _window.AppWindow.SetIcon(iconPath);
-
+            TrayIconService.HideFromTaskbar(WindowNative.GetWindowHandle(_window));
+            TrayIconService.RemoveWindowFrame(WindowNative.GetWindowHandle(_window));
+            if (_window.AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.SetBorderAndTitleBar(false, false);
+                presenter.IsResizable = false;
+                presenter.IsMinimizable = false;
+                presenter.IsMaximizable = false;
+            }
             _trayIcon = new TrayIconService();
             _trayIcon.Start(iconPath, "QuotaHub");
             _trayIcon.LeftClick += OnTrayLeftClick;
@@ -70,6 +84,11 @@ namespace QuotaHub
             _window.AppWindow.Closing += OnWindowClosing;
             _window.Activated += OnWindowActivated;
             _window.Closed += OnWindowClosed;
+            if (_window is MainWindow launchPanel)
+            {
+                _ = launchPanel.ShowAnimatedAsync();
+            }
+
             _window.Activate();
         }
 
@@ -83,21 +102,18 @@ namespace QuotaHub
             _window.DispatcherQueue.TryEnqueue(ShowPanel);
         }
 
-        private void OnTrayLeftClick()
+        private async void OnTrayLeftClick()
         {
-            if (_window == null)
+            if (_window is MainWindow panel)
             {
-                return;
-            }
-
-            nint hwnd = WindowNative.GetWindowHandle(_window);
-            if (_window.AppWindow.IsVisible && !TrayIconService.IsMinimized(hwnd))
-            {
-                _window.AppWindow.Hide();
-            }
-            else
-            {
-                ShowPanel();
+                if (panel.IsPanelVisible)
+                {
+                    await panel.HideAnimatedAsync();
+                }
+                else
+                {
+                    ShowPanel();
+                }
             }
         }
 
@@ -108,15 +124,22 @@ namespace QuotaHub
 
         private void ShowPanel()
         {
-            if (_window == null)
+            if (_window is MainWindow panel)
             {
-                return;
-            }
+                if (!panel.IsPanelVisible)
+                {
+                    _ = panel.ShowAnimatedAsync();
+                }
+                else
+                {
+                    panel.CancelPendingHide();
+                    _window.AppWindow.Show();
+                }
 
-            nint hwnd = WindowNative.GetWindowHandle(_window);
-            _window.AppWindow.Show();
-            TrayIconService.EnsureVisibleAndForeground(hwnd);
-            _window.Activate();
+                nint hwnd = WindowNative.GetWindowHandle(_window);
+                TrayIconService.EnsureVisibleAndForeground(hwnd);
+                _window.Activate();
+            }
         }
 
         private void OnTrayExitRequested()
@@ -135,14 +158,20 @@ namespace QuotaHub
             }
 
             args.Cancel = true;
-            _window?.AppWindow.Hide();
+            if (_window is MainWindow closingPanel)
+            {
+                _ = closingPanel.HideAnimatedAsync();
+            }
         }
 
         private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
         {
             if (args.WindowActivationState == WindowActivationState.Deactivated)
             {
-                _window?.AppWindow.Hide();
+                if (_window is MainWindow deactivatedPanel)
+                {
+                    _ = deactivatedPanel.HideAnimatedAsync();
+                }
             }
         }
 

@@ -13,7 +13,7 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="12" RowSpacing="8">
+    <Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto" Padding="12" RowSpacing="8" BorderThickness="1">
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="Escape" Invoked="OnEscapeInvoked" />
         </Grid.KeyboardAccelerators>
@@ -22,7 +22,9 @@
             <TextBlock Text="QuotaHub" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <Button x:Name="RefreshButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0" Click="OnRefreshClicked" ToolTipService.ToolTip="Refresh">
-                    <FontIcon FontSize="12" Glyph="&#xE72C;" />
+                    <Grid x:Name="RefreshIconContainer" Width="16" Height="16">
+                        <FontIcon FontSize="12" Glyph="&#xE72C;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
                 </Button>
                 <Button x:Name="SettingsButton" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="0" Click="OnSettingsClicked" ToolTipService.ToolTip="Settings">
                     <FontIcon FontSize="12" Glyph="&#xE713;" />

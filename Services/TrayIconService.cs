@@ -149,6 +149,24 @@ namespace QuotaHub.Services
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(nint hWnd, int nCmdShow);
 
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(nint hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern nint MonitorFromPoint(POINT pt, uint dwFlags);
+
+        [DllImport("shcore.dll")]
+        private static extern int GetDpiForMonitor(nint hmonitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+        private static extern nint GetWindowLongPtrW(nint hWnd, int nIndex);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern nint SetWindowLongPtrW(nint hWnd, int nIndex, nint dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
         private NOTIFYICONDATAW _data;
         private WndProcDelegate? _wndProc;
         private nint _hInstance;
@@ -265,9 +283,107 @@ namespace QuotaHub.Services
 
         private const int SW_RESTORE = 9;
 
-        public static bool IsMinimized(nint hwnd)
+        private const int GWL_EXSTYLE = -20;
+        private const int GWL_STYLE = -16;
+        private const long WS_BORDER = 0x00800000L;
+        private const long WS_DLGFRAME = 0x00400000L;
+        private const long WS_THICKFRAME = 0x00040000L;
+        private const long WS_EX_APPWINDOW = 0x00040000L;
+        private const long WS_EX_TOOLWINDOW = 0x00000080L;
+
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_FRAMECHANGED = 0x0020;
+
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+        private const int MDT_EFFECTIVE_DPI = 0;
+
+        /// <summary>
+        /// Gets the rasterization scale for the monitor hosting the window.
+        /// </summary>
+        public static double GetWindowScaleFactor(nint hwnd)
         {
-            return IsIconic(hwnd);
+            if (hwnd == nint.Zero)
+            {
+                return 1.0;
+            }
+
+            uint dpi = GetDpiForWindow(hwnd);
+            return dpi == 0 ? 1.0 : dpi / 96.0;
+        }
+
+        /// <summary>
+        /// Gets the cursor position in physical pixels.
+        /// </summary>
+        public static bool TryGetCursorPoint(out int x, out int y)
+        {
+            if (!GetCursorPos(out POINT position))
+            {
+                x = 0;
+                y = 0;
+                return false;
+            }
+
+            x = position.x;
+            y = position.y;
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the rasterization scale for the monitor nearest to a point.
+        /// </summary>
+        public static double GetScaleForPoint(int x, int y)
+        {
+            POINT point = new() { x = x, y = y };
+            nint monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+            if (monitor == nint.Zero)
+            {
+                return 1.0;
+            }
+
+            if (GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out uint dpiX, out _) != 0 || dpiX == 0)
+            {
+                return 1.0;
+            }
+
+            return dpiX / 96.0;
+        }
+
+        /// <summary>
+        /// Strips the Win32 border and caption frame bits so DWM draws no border
+        /// line around the panel. The XAML edge stroke and drop shadow stay.
+        /// </summary>
+        public static void RemoveWindowFrame(nint hwnd)
+        {
+            if (hwnd == nint.Zero)
+            {
+                return;
+            }
+
+            nint style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+            long updated = style.ToInt64() & ~(WS_BORDER | WS_DLGFRAME | WS_THICKFRAME);
+            SetWindowLongPtrW(hwnd, GWL_STYLE, new nint(updated));
+            SetWindowPos(hwnd, nint.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+        }
+
+        /// <summary>
+        /// Removes the taskbar button for the quota panel.
+        /// The panel remains reachable through the tray icon.
+        /// </summary>
+        public static void HideFromTaskbar(nint hwnd)
+        {
+            if (hwnd == nint.Zero)
+            {
+                return;
+            }
+
+            nint exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+            long updated = exStyle.ToInt64() | WS_EX_TOOLWINDOW;
+            updated &= ~WS_EX_APPWINDOW;
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new nint(updated));
+            SetWindowPos(hwnd, nint.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
         }
 
         /// <summary>
