@@ -38,8 +38,8 @@ namespace QuotaHub
             QuotaCacheService quotaCacheService = new();
             _window = new MainWindow(settingsService, quotaService, quotaCacheService);
             _window.AppWindow.Resize(new SizeInt32(380, 560));
-
             string iconPath = Path.Combine(Package.Current.InstalledLocation.Path, "Assets", "TrayIcon.ico");
+            _window.AppWindow.SetIcon(iconPath);
 
             _trayIcon = new TrayIconService();
             _trayIcon.Start(iconPath, "QuotaHub");
