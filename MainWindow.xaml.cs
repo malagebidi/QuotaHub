@@ -12,6 +12,7 @@ using QuotaHub.Models;
 using QuotaHub.Services;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -669,7 +670,7 @@ namespace QuotaHub
 
         private static string FormatNumber(double? value)
         {
-            return value?.ToString("0.####") ?? "?";
+            return value?.ToString("0.00", CultureInfo.InvariantCulture) ?? "?";
         }
 
         private static string? NormalizeKey(string password)
