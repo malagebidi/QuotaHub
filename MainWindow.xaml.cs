@@ -142,21 +142,52 @@ namespace QuotaHub
             AppWindow.Move(GetPanelPosition(GetWindowLayout()));
         }
 
-        private PointInt32 GetPanelPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
+        private PointInt32 GetPanelPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale, TaskbarEdge Edge) layout)
         {
             int width = (int)Math.Round(PanelWidth * layout.Scale);
             int height = (int)Math.Round(PanelHeight * layout.Scale);
             int margin = (int)Math.Round(PanelMargin * layout.Scale);
             RectInt32 workArea = layout.WorkArea;
-            int x = workArea.X + workArea.Width - width - margin;
-            int y = workArea.Y + workArea.Height - height - margin;
-            return new PointInt32(x, y);
+
+            return layout.Edge switch
+            {
+                TaskbarEdge.Top => new PointInt32(
+                    workArea.X + workArea.Width - width - margin,
+                    workArea.Y + margin),
+                TaskbarEdge.Left => new PointInt32(
+                    workArea.X + margin,
+                    workArea.Y + workArea.Height - height - margin),
+                TaskbarEdge.Right => new PointInt32(
+                    workArea.X + workArea.Width - width - margin,
+                    workArea.Y + workArea.Height - height - margin),
+                TaskbarEdge.Bottom or _ => new PointInt32(
+                    workArea.X + workArea.Width - width - margin,
+                    workArea.Y + workArea.Height - height - margin),
+            };
         }
 
-        private PointInt32 GetParkedPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
+        private PointInt32 GetParkedPosition((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale, TaskbarEdge Edge) layout)
         {
             PointInt32 panel = GetPanelPosition(layout);
-            return new PointInt32(panel.X, layout.OuterBounds.Y + layout.OuterBounds.Height + PanelParkedExtraPx);
+            int width = (int)Math.Round(PanelWidth * layout.Scale);
+            int height = (int)Math.Round(PanelHeight * layout.Scale);
+            RectInt32 outer = layout.OuterBounds;
+
+            return layout.Edge switch
+            {
+                TaskbarEdge.Top => new PointInt32(
+                    panel.X,
+                    outer.Y - height - PanelParkedExtraPx),
+                TaskbarEdge.Left => new PointInt32(
+                    outer.X - width - PanelParkedExtraPx,
+                    panel.Y),
+                TaskbarEdge.Right => new PointInt32(
+                    outer.X + outer.Width + PanelParkedExtraPx,
+                    panel.Y),
+                TaskbarEdge.Bottom or _ => new PointInt32(
+                    panel.X,
+                    outer.Y + outer.Height + PanelParkedExtraPx),
+            };
         }
 
         public SizeInt32 GetPhysicalSize()
@@ -164,28 +195,68 @@ namespace QuotaHub
             return GetPhysicalSize(GetCursorLayout());
         }
 
-        private SizeInt32 GetPhysicalSize((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) layout)
+        private SizeInt32 GetPhysicalSize((RectInt32 WorkArea, RectInt32 OuterBounds, double Scale, TaskbarEdge Edge) layout)
         {
             return new SizeInt32(
                 (int)Math.Round(PanelWidth * layout.Scale),
                 (int)Math.Round(PanelHeight * layout.Scale));
         }
 
-        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) GetCursorLayout()
+        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale, TaskbarEdge Edge) GetCursorLayout()
         {
             if (TrayIconService.TryGetCursorPoint(out int x, out int y))
             {
                 DisplayArea display = DisplayArea.GetFromPoint(new PointInt32(x, y), DisplayAreaFallback.Primary);
-                return (display.WorkArea, display.OuterBounds, TrayIconService.GetScaleForPoint(x, y));
+                TaskbarEdge edge = DetectTaskbarEdge(display.WorkArea, display.OuterBounds, x, y);
+                return (display.WorkArea, display.OuterBounds, TrayIconService.GetScaleForPoint(x, y), edge);
             }
 
             return GetWindowLayout();
         }
 
-        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale) GetWindowLayout()
+        private (RectInt32 WorkArea, RectInt32 OuterBounds, double Scale, TaskbarEdge Edge) GetWindowLayout()
         {
             DisplayArea display = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary);
-            return (display.WorkArea, display.OuterBounds, TrayIconService.GetWindowScaleFactor(WindowNative.GetWindowHandle(this)));
+            TaskbarEdge edge = DetectTaskbarEdge(display.WorkArea, display.OuterBounds);
+            return (display.WorkArea, display.OuterBounds, TrayIconService.GetWindowScaleFactor(WindowNative.GetWindowHandle(this)), edge);
+        }
+
+        private static TaskbarEdge DetectTaskbarEdge(RectInt32 workArea, RectInt32 outer, int cursorX = int.MinValue, int cursorY = int.MinValue)
+        {
+            int leftDiff = workArea.X - outer.X;
+            int topDiff = workArea.Y - outer.Y;
+            int rightDiff = (outer.X + outer.Width) - (workArea.X + workArea.Width);
+            int bottomDiff = (outer.Y + outer.Height) - (workArea.Y + workArea.Height);
+
+            int maxDiff = Math.Max(Math.Max(leftDiff, topDiff), Math.Max(rightDiff, bottomDiff));
+            if (maxDiff > 10)
+            {
+                if (topDiff == maxDiff) return TaskbarEdge.Top;
+                if (leftDiff == maxDiff) return TaskbarEdge.Left;
+                if (rightDiff == maxDiff) return TaskbarEdge.Right;
+                return TaskbarEdge.Bottom;
+            }
+
+            if (TrayIconService.TryGetTaskbarEdge(out TaskbarEdge edge))
+            {
+                return edge;
+            }
+
+            if (cursorX != int.MinValue && cursorY != int.MinValue)
+            {
+                int distLeft = cursorX - outer.X;
+                int distTop = cursorY - outer.Y;
+                int distRight = (outer.X + outer.Width) - cursorX;
+                int distBottom = (outer.Y + outer.Height) - cursorY;
+
+                int minDist = Math.Min(Math.Min(distLeft, distTop), Math.Min(distRight, distBottom));
+                if (minDist == distTop) return TaskbarEdge.Top;
+                if (minDist == distLeft) return TaskbarEdge.Left;
+                if (minDist == distRight) return TaskbarEdge.Right;
+                return TaskbarEdge.Bottom;
+            }
+
+            return TaskbarEdge.Bottom;
         }
 
         private async Task SlideWindowToAsync(PointInt32 to, int durationMs, int version, bool easeOut)

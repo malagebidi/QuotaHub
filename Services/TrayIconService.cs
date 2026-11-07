@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using QuotaHub.Models;
 
 namespace QuotaHub.Services
 {
@@ -30,6 +31,12 @@ namespace QuotaHub.Services
         private const uint TPM_RIGHTBUTTON = 0x0002;
         private const uint TPM_BOTTOMALIGN = 0x0020;
         private const uint TPM_RETURNCMD = 0x0100;
+
+        private const uint ABM_GETTASKBARPOS = 0x00000005;
+        private const uint ABE_LEFT = 0;
+        private const uint ABE_TOP = 1;
+        private const uint ABE_RIGHT = 2;
+        private const uint ABE_BOTTOM = 3;
 
         private const nuint MenuShowId = 1;
         private const nuint MenuExitId = 2;
@@ -95,8 +102,31 @@ namespace QuotaHub.Services
             public int y;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct APPBARDATA
+        {
+            public uint cbSize;
+            public nint hWnd;
+            public uint uCallbackMessage;
+            public uint uEdge;
+            public RECT rc;
+            public nint lParam;
+        }
+
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool Shell_NotifyIconW(uint dwMessage, ref NOTIFYICONDATAW lpData);
+
+        [DllImport("shell32.dll", SetLastError = true)]
+        private static extern nuint SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern nint LoadImageW(nint hInstance, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
@@ -349,6 +379,33 @@ namespace QuotaHub.Services
             }
 
             return dpiX / 96.0;
+        }
+
+        /// <summary>
+        /// Queries the Windows shell for the edge of the primary taskbar.
+        /// Returns false if the shell query fails.
+        /// </summary>
+        public static bool TryGetTaskbarEdge(out TaskbarEdge edge)
+        {
+            APPBARDATA data = new()
+            {
+                cbSize = (uint)Marshal.SizeOf<APPBARDATA>()
+            };
+
+            if (SHAppBarMessage(ABM_GETTASKBARPOS, ref data) != 0)
+            {
+                edge = data.uEdge switch
+                {
+                    ABE_LEFT => TaskbarEdge.Left,
+                    ABE_TOP => TaskbarEdge.Top,
+                    ABE_RIGHT => TaskbarEdge.Right,
+                    _ => TaskbarEdge.Bottom,
+                };
+                return true;
+            }
+
+            edge = TaskbarEdge.Bottom;
+            return false;
         }
 
         /// <summary>

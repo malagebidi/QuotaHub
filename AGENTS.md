@@ -235,3 +235,4 @@ scaffolding.
 -   [x] Design and implement provider quota retrieval (OpenRouter + DeepSeek, manual refresh).
 -   [x] Implement panel slide animation, frameless styling, and taskbar removal.
 -   [x] Add refresh button spinning animation with smooth ease-out and 5-second cooldown.
+-   [x] Adapt panel positioning and slide animations to all taskbar orientations (bottom, top, left, right).
