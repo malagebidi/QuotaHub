@@ -75,6 +75,7 @@ namespace QuotaHub
         private const int PanelWidth = 380;
         private const int PanelHeight = 560;
         private const int PanelMargin = 12;
+        private const int DefaultTaskbarThickness = 48;
         private const int PanelParkedExtraPx = 4;
         private int _animationVersion;
 
@@ -147,22 +148,27 @@ namespace QuotaHub
             int width = (int)Math.Round(PanelWidth * layout.Scale);
             int height = (int)Math.Round(PanelHeight * layout.Scale);
             int margin = (int)Math.Round(PanelMargin * layout.Scale);
+            int defaultThickness = (int)Math.Round(DefaultTaskbarThickness * layout.Scale);
+            RectInt32 outer = layout.OuterBounds;
             RectInt32 workArea = layout.WorkArea;
 
             return layout.Edge switch
             {
                 TaskbarEdge.Top => new PointInt32(
-                    workArea.X + workArea.Width - width - margin,
-                    workArea.Y + margin),
+                    outer.X + outer.Width - width - margin,
+                    outer.Y + Math.Max(workArea.Y - outer.Y, defaultThickness) + margin),
+
                 TaskbarEdge.Left => new PointInt32(
-                    workArea.X + margin,
-                    workArea.Y + workArea.Height - height - margin),
+                    outer.X + Math.Max(workArea.X - outer.X, defaultThickness) + margin,
+                    outer.Y + outer.Height - height - margin),
+
                 TaskbarEdge.Right => new PointInt32(
-                    workArea.X + workArea.Width - width - margin,
-                    workArea.Y + workArea.Height - height - margin),
+                    outer.X + outer.Width - Math.Max((outer.X + outer.Width) - (workArea.X + workArea.Width), defaultThickness) - width - margin,
+                    outer.Y + outer.Height - height - margin),
+
                 TaskbarEdge.Bottom or _ => new PointInt32(
-                    workArea.X + workArea.Width - width - margin,
-                    workArea.Y + workArea.Height - height - margin),
+                    outer.X + outer.Width - width - margin,
+                    outer.Y + outer.Height - Math.Max((outer.Y + outer.Height) - (workArea.Y + workArea.Height), defaultThickness) - height - margin),
             };
         }
 
