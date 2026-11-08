@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Windowing;
 using Microsoft.Windows.AppLifecycle;
 using AppInstance = Microsoft.Windows.AppLifecycle.AppInstance;
@@ -18,6 +18,7 @@ namespace QuotaHub
     {
         private Window? _window;
         private TrayIconService? _trayIcon;
+        private HotkeyService? _hotkeyService;
         private bool _isExiting;
 
         /// <summary>
@@ -56,7 +57,9 @@ namespace QuotaHub
             SettingsService settingsService = new();
             QuotaService quotaService = new();
             QuotaCacheService quotaCacheService = new();
-            _window = new MainWindow(settingsService, quotaService, quotaCacheService);
+            _hotkeyService = new HotkeyService();
+            _hotkeyService.HotkeyPressed += OnHotkeyPressed;
+            _window = new MainWindow(settingsService, quotaService, quotaCacheService, _hotkeyService);
             SizeInt32 initialSize = new SizeInt32(380, 560);
             if (_window is MainWindow bootPanel)
             {
@@ -102,7 +105,17 @@ namespace QuotaHub
             _window.DispatcherQueue.TryEnqueue(ShowPanel);
         }
 
-        private async void OnTrayLeftClick()
+        private void OnTrayLeftClick()
+        {
+            TogglePanel();
+        }
+
+        private void OnHotkeyPressed()
+        {
+            TogglePanel();
+        }
+
+        private async void TogglePanel()
         {
             if (_window is MainWindow panel)
             {
@@ -145,6 +158,8 @@ namespace QuotaHub
         private void OnTrayExitRequested()
         {
             _isExiting = true;
+            _hotkeyService?.Dispose();
+            _hotkeyService = null;
             _trayIcon?.Dispose();
             _trayIcon = null;
             Exit();
@@ -177,6 +192,8 @@ namespace QuotaHub
 
         private void OnWindowClosed(object sender, WindowEventArgs args)
         {
+            _hotkeyService?.Dispose();
+            _hotkeyService = null;
             _trayIcon?.Dispose();
             _trayIcon = null;
         }

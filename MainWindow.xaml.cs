@@ -28,6 +28,7 @@ namespace QuotaHub
         private readonly SettingsService _settingsService;
         private readonly QuotaService _quotaService;
         private readonly QuotaCacheService _quotaCacheService;
+        private readonly HotkeyService _hotkeyService;
         private AppSettings _settings = new();
         private bool _refreshing;
         private bool _saving;
@@ -47,12 +48,13 @@ namespace QuotaHub
         private TimeSpan _autoRefreshInterval = TimeSpan.FromMinutes(5);
         private static readonly TimeSpan DisplayInterval = TimeSpan.FromSeconds(15);
 
-        public MainWindow(SettingsService settingsService, QuotaService quotaService, QuotaCacheService quotaCacheService)
+        public MainWindow(SettingsService settingsService, QuotaService quotaService, QuotaCacheService quotaCacheService, HotkeyService hotkeyService)
         {
             InitializeComponent();
             _settingsService = settingsService;
             _quotaService = quotaService;
             _quotaCacheService = quotaCacheService;
+            _hotkeyService = hotkeyService;
             Activated += OnFirstActivated;
             _autoRefreshTimer = DispatcherQueue.CreateTimer();
             _autoRefreshTimer.Interval = _autoRefreshInterval;
@@ -301,7 +303,9 @@ namespace QuotaHub
             OpenRouterKeyBox.Password = _settings.OpenRouterApiKey ?? string.Empty;
             DeepSeekKeyBox.Password = _settings.DeepSeekApiKey ?? string.Empty;
             SelectAutoRefreshItem(_settings.AutoRefreshMinutes);
+            SelectShortcutItem(_settings.Shortcut);
             ApplyIntervalSettings();
+            _hotkeyService.Register(_settings.Shortcut);
 
             IReadOnlyList<QuotaSnapshot> cached = await _quotaCacheService.LoadAsync();
             if (cached.Count > 0)
@@ -343,7 +347,7 @@ namespace QuotaHub
         {
             _showingSettings = !_showingSettings;
             QuotaScroll.Visibility = _showingSettings ? Visibility.Collapsed : Visibility.Visible;
-            SettingsPanel.Visibility = _showingSettings ? Visibility.Visible : Visibility.Collapsed;
+            SettingsScroll.Visibility = _showingSettings ? Visibility.Visible : Visibility.Collapsed;
             SettingsButton.Content = new FontIcon { FontSize = 12, Glyph = _showingSettings ? "\uE72B" : "\uE713" };
             ToolTipService.SetToolTip(SettingsButton, _showingSettings ? "Back to quotas" : "Settings");
             UpdateButtonStates();
@@ -363,10 +367,21 @@ namespace QuotaHub
                 _settings.OpenRouterApiKey = NormalizeKey(OpenRouterKeyBox.Password);
                 _settings.DeepSeekApiKey = NormalizeKey(DeepSeekKeyBox.Password);
                 _settings.AutoRefreshMinutes = ReadAutoRefreshMinutes();
+                _settings.Shortcut = ReadShortcut();
                 await _settingsService.SaveAsync(_settings);
                 SelectAutoRefreshItem(_settings.AutoRefreshMinutes);
+                SelectShortcutItem(_settings.Shortcut);
                 ApplyIntervalSettings();
-                SettingsStatus.Text = $"Saved at {DateTime.Now:HH:mm:ss}.";
+
+                bool registered = _hotkeyService.Register(_settings.Shortcut);
+                if (!registered && !string.Equals(_settings.Shortcut, "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    SettingsStatus.Text = $"Saved at {DateTime.Now:HH:mm:ss} (shortcut conflict).";
+                }
+                else
+                {
+                    SettingsStatus.Text = $"Saved at {DateTime.Now:HH:mm:ss}.";
+                }
             }
             finally
             {
@@ -546,6 +561,46 @@ namespace QuotaHub
             }
 
             return 5;
+        }
+
+        private void SelectShortcutItem(string shortcut)
+        {
+            int selected = 0;
+            bool found = false;
+
+            for (int i = 0; i < ShortcutBox.Items.Count; i++)
+            {
+                if (ShortcutBox.Items[i] is ComboBoxItem item &&
+                    string.Equals(item.Tag?.ToString(), shortcut, StringComparison.OrdinalIgnoreCase))
+                {
+                    selected = i;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found && !string.IsNullOrWhiteSpace(shortcut))
+            {
+                ComboBoxItem customItem = new()
+                {
+                    Content = shortcut,
+                    Tag = shortcut,
+                };
+                ShortcutBox.Items.Add(customItem);
+                selected = ShortcutBox.Items.Count - 1;
+            }
+
+            ShortcutBox.SelectedIndex = selected;
+        }
+
+        private string ReadShortcut()
+        {
+            if (ShortcutBox.SelectedItem is ComboBoxItem item && item.Tag != null)
+            {
+                return item.Tag.ToString() ?? "Alt+Q";
+            }
+
+            return "Alt+Q";
         }
 
         private void OnDisplayTick(object sender, object e)

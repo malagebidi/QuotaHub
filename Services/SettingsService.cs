@@ -15,6 +15,8 @@ namespace QuotaHub.Services
         public string? DeepSeekApiKey { get; set; }
 
         public int AutoRefreshMinutes { get; set; } = 5;
+
+        public string Shortcut { get; set; } = "Alt+Q";
     }
 
     public sealed class SettingsService
@@ -31,6 +33,8 @@ namespace QuotaHub.Services
             public string? DeepSeekApiKeyProtected { get; set; }
 
             public int? AutoRefreshMinutes { get; set; }
+
+            public string? Shortcut { get; set; }
         }
 
         public async Task<AppSettings> LoadAsync()
@@ -55,6 +59,7 @@ namespace QuotaHub.Services
                     OpenRouterApiKey = await UnprotectAsync(stored.OpenRouterApiKeyProtected),
                     DeepSeekApiKey = await UnprotectAsync(stored.DeepSeekApiKeyProtected),
                     AutoRefreshMinutes = NormalizeAutoRefreshMinutes(stored.AutoRefreshMinutes),
+                    Shortcut = NormalizeShortcut(stored.Shortcut),
                 };
             }
             catch
@@ -73,12 +78,18 @@ namespace QuotaHub.Services
                 OpenRouterApiKeyProtected = await ProtectAsync(settings.OpenRouterApiKey),
                 DeepSeekApiKeyProtected = await ProtectAsync(settings.DeepSeekApiKey),
                 AutoRefreshMinutes = NormalizeAutoRefreshMinutes(settings.AutoRefreshMinutes),
+                Shortcut = NormalizeShortcut(settings.Shortcut),
             };
 
             string dataFolder = AppPaths.GetDataFolderPath();
             string path = Path.Combine(dataFolder, SettingsFileName);
             string json = JsonSerializer.Serialize(stored, JsonOptions);
             await File.WriteAllTextAsync(path, json);
+        }
+
+        private static string NormalizeShortcut(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "Alt+Q" : value.Trim();
         }
 
         private static int NormalizeAutoRefreshMinutes(int? value)
